@@ -36,7 +36,7 @@
 #include <nodelet/nodelet.h>
 #include <image_transport/image_transport.h>
 #include <dynamic_reconfigure/server.h>
-#include <dynamic_reconfigure/SensorLevels.h>
+#include <driver_base/SensorLevels.h>
 #include <diagnostic_updater/diagnostic_updater.h>
 #include <diagnostic_updater/publisher.h>
 #include <camera_calibration_parsers/parse_ini.h>
@@ -515,7 +515,7 @@ private:
         last_config_.height   = req.roi.height;
         last_config_.width    = req.roi.width;
 
-        reconfigureCallback(last_config_, dynamic_reconfigure::SensorLevels::RECONFIGURE_RUNNING);
+        reconfigureCallback(last_config_, driver_base::SensorLevels::RECONFIGURE_RUNNING);
 
         try
         {
@@ -690,8 +690,29 @@ private:
     {
         NODELET_DEBUG("Reconfigure request received");
 
-        if (level >= (uint32_t)dynamic_reconfigure::SensorLevels::RECONFIGURE_STOP)
+        if (level >= (uint32_t)driver_base::SensorLevels::RECONFIGURE_STOP)
             stop();
+
+        //-- f-stop
+        if (camera_->hasAttribute("EFLensFStopCurrent") && camera_->hasAttribute("EFLensFStopMin") && camera_->hasAttribute("EFLensFStopMax"))
+        {
+          tPvFloat32 fStopMin;
+          tPvFloat32 fStopMax;
+          camera_->getAttribute("EFLensFStopMin", fStopMin);
+          camera_->getAttribute("EFLensFStopMax", fStopMax);
+
+          tPvFloat32 fStop = config.f_stop_servo;
+          if(fStop > fStopMax)
+          {
+            fStop = fStopMax;
+          }
+          else if(fStop < fStopMin)
+          {
+            fStop = fStopMin;
+          }
+
+          camera_->setAttribute("EFLensFStopCurrent", fStop);
+        }
 
         //! Trigger mode
         if (config.trigger_mode == "streaming")
@@ -745,7 +766,6 @@ private:
         {
             trigger_sub_ = ros::NodeHandle().subscribe(trig_timestamp_topic_, 1, &ProsilicaNodelet::syncInCallback, this);
         }
-
 
         // Exposure
         if (config.auto_exposure)
@@ -865,7 +885,7 @@ private:
 
         //! If exception thrown due to bad settings, it will fail to start camera
         //! Reload last good config
-        if (level >= (uint32_t)dynamic_reconfigure::SensorLevels::RECONFIGURE_STOP)
+        if (level >= (uint32_t)driver_base::SensorLevels::RECONFIGURE_STOP)
         {
             try
             {
